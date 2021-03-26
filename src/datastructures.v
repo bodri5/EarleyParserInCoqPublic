@@ -20,9 +20,43 @@ Notation "a ⊂ b" := (strictSubsetOp a b) (at level 70).
 Class SubsetOpClass (A B:Type):=
  subsetOp: A->B->Prop.
 Notation "a ⊆ b" := (subsetOp a b) (at level 70).
+Class EqDecOpClass (A:Type):=
+ eqDecOp: forall (a b:A), {a = b}+{~ a = b}.
+Notation "a =?= b" := (eqDecOp a b) (at level 70).
+Class PushEndOpClass (A B C:Type):=
+  pusEndOp: A->B->C.
+Notation "a :<: b" := (pusEndOp a b) (at level 70).
+(*:>:  :<: ::<  >::*)
 
 Instance listInOpClass A: InOpClass A (list A):=
   fun a l => In a l.
+
+Instance sumEqDecOpClass A B `(EqDecOpClass A, EqDecOpClass B):
+EqDecOpClass (A+B).
+  intros [a|a] [b|b].
+-  destruct (a=?=b).
+-- left. congruence.
+-- right. congruence.
+- right. congruence.
+- right. congruence.
+-  destruct (a=?=b).
+-- left. congruence.
+-- right. congruence.
+Defined.
+
+Instance listEqDecOpClass A `(EqDecOpClass A): EqDecOpClass (list A).
+unfold EqDecOpClass.
+induction a;
+destruct b.
+left. congruence.
+right. congruence.
+right. congruence.
+destruct (a=?=a1).
+destruct (IHa b).
+left. congruence.
+right. congruence.
+right. congruence.
+Defined.
 
 (** 
 
@@ -451,6 +485,17 @@ Fixpoint listToMembershipProofList [A] (l:list A) : list {x:A | x ∊ l}:=
    end.
 
 (*  Compute listToMembershipProofList [1;2;3;66].*)
+
+Lemma lastCons: forall A (l:list A) a b, last (a::l) b = last l a.
+Proof.
+  induction l as [ | a0 l0 IHl0].
+-  reflexivity.
+-  intros a b.
+   cbn in IHl0.
+   destruct l0. reflexivity.
+   cbn in *.
+   apply IHl0.
+Qed.
 
 Section sublist.
 Context {A:Type}.

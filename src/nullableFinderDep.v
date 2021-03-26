@@ -82,7 +82,7 @@ foldl createRHSdic_aux
 Type aliases for the dependent dictionary.
 *)
 Definition parseTreeDicFun:=
-    fun n:N => Maybe (parseTreeDep N T G nil 0 0 n).
+    fun n:N => Maybe (forall i k, parseTreeDep N T G i k k n).
 Definition parseTreeDic:=dddictionary N (parseTreeDicFun).
 
 
@@ -92,19 +92,19 @@ that correspond to the input symbols
 and if any of them is not nullable, we return Nothing *)
 Fixpoint rule_loop_body_aux
     (a:list (N+T)) (nullabledic: parseTreeDic) {struct a}:
-    Maybe (parseForestDep N T G [] 0 (fmap (fun _ => 0) a) a):=
+    Maybe (forall i k, parseForestDep N T G i k (fmap (fun _ => k) a) a):=
   match a as a0
-  return a = a0 -> Maybe (parseForestDep N T G [] 0
-                     (fmap (fun _ =>  0) a0) a0)
+  return a = a0 -> Maybe (forall i k, parseForestDep N T G i k
+                     (fmap (fun _ =>  k) a0) a0)
   with
-    | nil => fun Heqa => Just (pfNil _ _ _ _ _)
+    | nil => fun Heqa => Just (fun i k => pfNil _ _ _ _ _)
     | inl hdn :: tl => fun Heqa => match (ddlookup hdn nullabledic) with
                     | Nothing => Nothing
                     | Just pt =>
                     match rule_loop_body_aux tl nullabledic with
                       | Nothing => Nothing
                       | Just pf =>
-                         Just (pfSub N T G _ _ _ hdn pt _ _ _ pf eq_refl)
+                         Just (fun i k => pfSub N T G _ _ _ hdn (pt i k) _ _ _ (pf i k) eq_refl)
                     end
                    end
     | inr hdt :: tl => fun Heqa => Nothing
@@ -145,8 +145,8 @@ foldl
                  nStateConstr ntSet
                    s1
                    (ddinsert (lhs ru)
-                     (Just ( ptNode G nil 0 0 (lhs ru) _ _ _
-                             (pfNil N T G [] 0) ?[rI1]))
+                     (Just (fun i k => ptNode G i k k (lhs ru) _ _ _
+                             (pfNil N T G i k) ?[rI1]))
                      dic)
                    ?[pI1] ?[pIr1]
              | _ :: _ => fun Heqr => (*Nonempty, no change*)
@@ -214,7 +214,7 @@ refine (
         let '(exist _ ws1 pI1):=upush_in (lhs r) workstack ?[pInot] in
         nStateConstr nyfl
        (ws1)
-       (ddinsert (lhs r) (Just (ptNode G [] 0 0 (lhs r) _ _ _ x ?[Igr])) nullabledic )
+       (ddinsert (lhs r) (Just (fun i k => ptNode G i k k (lhs r) _ _ _ (x i k) ?[Igr])) nullabledic )
        ?[pI2] ?[pIr2]
     (*we found a new nullable symbol*)
       | Nothing => istate
@@ -355,7 +355,7 @@ Defined.
 Wrapper function, it creates the nullable lookup
 function needed by the Earley parser.
 *)
-Definition createIsNullableMbParsetree: forall n:N, Maybe (parseTreeDep N T G nil 0 0 n).
+Definition createIsNullableMbParsetree: forall n:N, Maybe (forall i k, parseTreeDep N T G i k k n).
 refine(
   let rhs_table := createRHSdic in
   let '(nStateConstr _ workstack nullabledic pI pIr) :=
