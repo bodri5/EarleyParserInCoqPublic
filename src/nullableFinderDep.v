@@ -51,6 +51,44 @@ Various dictionary implementations.
 Variable (nDm:MultiDictionary N).
 Variable (nDd:DependentDefaultDictionary N).
 
+(**
+Relations for the correctness proof
+*)
+
+Definition isNullable n:= inhabited (forall i k, parseTreeDep N T G i k k n).
+
+(**
+isDescendantTree is (equivalent to) True if the nonterminal
+appears somwhere in the parsetree, except at the root.
+*)
+(*
+Inductive isDescendantTree {i}: forall {bpos epos n}
+  (m:N) (pt:parseTreeDep N T G i bpos epos n), Prop:=
+  | idtNode n m rl bpos poss (pf: parseForestDep N T G i bpos poss rl)
+  pI (pF: isDescendantForest m pf)
+  : isDescendantTree m (ptNode G i n rl bpos poss pf pI)
+with
+isDescendantForest {i}: forall {bpos poss rl}
+  (m:N) (pf: parseForestDep N T G i bpos poss rl),Prop :=
+  | idfHead m b1 e1 pt poss (rl:list (N + T)) pf: isDescendantForest m (pfSub N T G i b1 e1 m pt poss rl pf)
+  | idfNext m b1 e1 n1 pt poss (rl:list (N + T)) pf (pI:isDescendantTree m pt): isDescendantForest m (pfSub N T G i b1 e1 n1 pt poss rl pf)
+  | idfTail1 m b1 e1 n1 pt poss (rl:list (N + T)) pf (pI:isDescendantForest m pf): isDescendantForest m (pfSub N T G i b1 e1 n1 pt poss rl pf)
+  | idfTail2 m b1 c poss (rl:list (N + T)) pf (pI:isDescendantForest m pf) pAt: isDescendantForest m (pfTrm N T G i b1 c (b1+1) poss rl pf eq_refl pAt).
+
+Instance isDescendantTreeInOpClass {i bpos epos n}:
+  InOpClass N (parseTreeDep N T G i bpos epos n):=
+isDescendantTree.
+
+Definition hasEmptyRule: N->Prop:=
+fun n => ruleConstr n [] ∊ G.
+
+
+Lemma nullTreeHasEmptyRule:
+    forall i k n (pt:parseTreeDep N T G i k k n),
+    hasEmptyRule n \/
+    (exists m, m ∊ pt /\ hasEmptyRule m).
+Admitted.
+*)
 
 (**
 First we create a dictionary of all rules indexed by the
@@ -92,10 +130,11 @@ that correspond to the input symbols
 and if any of them is not nullable, we return Nothing *)
 Fixpoint rule_loop_body_aux
     (a:list (N+T)) (nullabledic: parseTreeDic) {struct a}:
-    Maybe (forall i k, parseForestDep N T G i k (fmap (fun _ => k) a) a):=
+    Maybe (forall i k, parseForestDep N T G i (fmap (fun _ => k) a) k a).
+refine(
   match a as a0
-  return a = a0 -> Maybe (forall i k, parseForestDep N T G i k
-                     (fmap (fun _ =>  k) a0) a0)
+  return a = a0 -> Maybe (forall i k, parseForestDep N T G i
+                     (fmap (fun _ =>  k) a0) k a0)
   with
     | nil => fun Heqa => Just (fun i k => pfNil _ _ _ _ _)
     | inl hdn :: tl => fun Heqa => match (ddlookup hdn nullabledic) with
@@ -104,12 +143,15 @@ Fixpoint rule_loop_body_aux
                     match rule_loop_body_aux tl nullabledic with
                       | Nothing => Nothing
                       | Just pf =>
-                         Just (fun i k => pfSub N T G _ _ _ hdn (pt i k) _ _ _ (pf i k) eq_refl)
+                         Just (fun i k => pfSub N T G _ _ _ hdn (pt i k) _ _ _ (pf i k) _)
                     end
                    end
     | inr hdt :: tl => fun Heqa => Nothing
              (** The next symbol of the rhs is a terminal *)
-  end eq_refl.
+  end eq_refl
+).
+destruct tl; reflexivity.
+Defined.
 
 
 
@@ -125,7 +167,14 @@ Inductive nState
   (*Invariants of the state: the not yet processed symbols
      are exactly those, that are either on the stack, or (exclusive or) not declared nullable in the dictionary.*)
   (pI: forall n, (n ∊ s \/ ddlookup n dic = Nothing) -> n ∊ nyfl)
-  (pIr: forall n, n ∊ nyfl -> (n ∊ s /\ ~ ddlookup n dic = Nothing \/ ddlookup n dic = Nothing /\ ~ n ∊ s))
+  (pIr: forall n, n ∊ nyfl ->
+         (n ∊ s /\ ~ ddlookup n dic = Nothing \/
+          ddlookup n dic = Nothing /\ ~ n ∊ s))
+  (*The actually nullable symbols that are not yet in the stack
+     must have at least one descendant on the stack.*)
+  (*pDes: forall n, isNullable n -> ddlookup n dic = Nothing ->
+    (forall i k, 
+       exists (t:parseTreeDep N T G i k k n) m, m ∊ s /\ m ∊ t)*) 
   : nState nyfl.
 
 
@@ -145,8 +194,9 @@ foldl
                  nStateConstr ntSet
                    s1
                    (ddinsert (lhs ru)
-                     (Just (fun i k => ptNode G i k k (lhs ru) _ _ _
-                             (pfNil N T G i k) ?[rI1]))
+                     (Just (fun i k => ptNode G i (lhs ru)
+                             nil k nil k
+                             (pfNil N T G i k) ?[rI1] eq_refl))
                      dic)
                    ?[pI1] ?[pIr1]
              | _ :: _ => fun Heqr => (*Nonempty, no change*)
@@ -214,7 +264,7 @@ refine (
         let '(exist _ ws1 pI1):=upush_in (lhs r) workstack ?[pInot] in
         nStateConstr nyfl
        (ws1)
-       (ddinsert (lhs r) (Just (fun i k => ptNode G i k k (lhs r) _ _ _ (x i k) ?[Igr])) nullabledic )
+       (ddinsert (lhs r) (Just (fun i k => ptNode G i (lhs r) _ k _ k (x i k) ?[Igr] ?[pEqb]))  nullabledic )
        ?[pI2] ?[pIr2]
     (*we found a new nullable symbol*)
       | Nothing => istate
@@ -223,6 +273,20 @@ refine (
   end eq_refl
   ).
 
+(*
+[ptnode]:{
+Eval cbv in (x i k).
+Check(ptNode G i (lhs r) _ k _ k (x i k) ?[Igr] _).
+assert (forall A (l:list A) (x:nat),x = last (fmap (fun _ : A => x) l) x) as Hkeq.
+{
+  induction l.
+  reflexivity.
+  intros.
+  cbn.
+  rewrite <- IHl.
+  destruct l; reflexivity.
+}
+rewrite (Hkeq _ (rhs r) k) at 1.*)
 [pInot]: { firstorder. }
 
 [pI2]:{
@@ -262,6 +326,9 @@ refine (
 [Igr]:{
   rewrite ruleReassemble.
   exact pRInG.
+}
+[pEqb]:{
+  destruct (rhs r); cbn; congruence.
 }
 Defined.
 

@@ -43,16 +43,16 @@ Variable isNullable: forall (n:N), Maybe (forall i k, parseTreeDep N T G i k k n
 
 *)
 Inductive earlyItemD:=
-  eiC (n:N)
-  (startposition:nat)
-  (rns: list (N+T))
-  (rnp: list nat)
-  (pf: parseForestDep N T G i startposition rnp rns)
+  eiC (n:N) (*lhs symbol*)
+  (rns: list (N+T)) (*Stuff before the dot*)
   (pnd: list (N+T)) (*Stuff after the dot*)
+  (poss: list nat)
+  (epos: nat)
+  (pf: parseForestDep N T G i poss epos rns)
   (pM: (ruleConstr n (rns++pnd)) ∊ G).
 
-Notation "n → rns • pnd ( k ) , ks pf pI" :=
-  (eiC n k rns ks pf pnd pI)  (only printing, at level 60).
+Notation "n → rns • pnd ⟨ poss , epos ⟩ pf , pM" :=
+  (eiC n rns pnd poss epos pf pM)  (at level 60).
 
 
 
@@ -63,15 +63,18 @@ Notation "n → rns • pnd ( k ) , ks pf pI" :=
 
 
 Definition eitGetRule (it:earlyItemD):= 
-  let (n,start,rns,rnp,pf,pnd,pM):=it in ruleConstr  n (rns++pnd).
+  let (n, rns, pnd, poss, epos, pf, pM):=it
+  in ruleConstr  n (rns++pnd).
 
+Definition eitGetRuleLhs (it:earlyItemD):= 
+  let (n, rns, pnd, poss, epos, pf, pM):=it in n.
 
 (**The position of the dot.*)
 Definition eitGetPOD (it:earlyItemD):= 
-  let (n,start,rns,rnp,pf,pnd,pM):=it in length rns.
+  let (n, rns, pnd, poss, epos, pf, pM):=it in length rns.
 
 Definition eitGetStartposition (it:earlyItemD):= 
-  let (n,start,rns,rnp,pf,pnd,pM):=it in start.
+  let (n, rns, pnd, poss, epos, pf, pM):=it in hd epos poss.
 
 (*?????*)
 (*Definition eitExtrCH (it:earlyItemD): sigT (fun ris: (list (list T)) => sigT (fun rns=> parseForestWithInput N T G ris rns)):= 
@@ -79,14 +82,14 @@ Definition eitGetStartposition (it:earlyItemD):=
 *)
 
 Definition eitGetPending (it:earlyItemD):= 
-  let (n,start,rns,rnp,pf,pnd,pM):=it in pnd.
+  let (n, rns, pnd, poss, epos, pf, pM):=it in pnd.
 
 (*
 Definition eitExtrRis (it:earlyItemD):= 
   let (_,ris,_,_,_,_,_,_):=it in ris.*)
 
 Definition eitGetEndPos (it:earlyItemD):= 
-  let (n,start,rns,rnp,pf,pnd,pM):=it in last rnp start.
+  let (n, rns, pnd, poss, epos, pf, pM):=it in epos.
 
 (** A befejezett earley set-ekhez hozzá került a set száma, és egy bizonyítás, hogy az általa lefedett terminálisok a kadik nál érnek véget.
 
@@ -178,9 +181,9 @@ Defined.
 *)
 Definition getNextSymbolFromEarleyItem (it:earlyItemD): (N+T) + {eitGetPending it = nil}.
 refine (
-  (let (n,start,rns,rnp,pf,pnd,pM) as k return it = k -> _ := it in fun ieq =>
-      match pnd as pend return pnd = pend -> _ with 
-        | nil => fun heq => inright _ 
+  (let (n, rns, pnd, poss, epos, pf, pM) as it0 return it = it0 -> _ := it in fun ieq =>
+      match pnd as pnd0 return pnd = pnd0 -> _ with 
+        | nil => fun heq => inright _
         | cons hd _ => fun heq => inleft hd
       end eq_refl) 
   eq_refl
@@ -291,14 +294,14 @@ Defined.
 
 *)
 Definition dotAdvancerN
-  (bpos epos: nat) (*The input, covered by the new part*)
-  (b:N)           (*Nonterminal symbol, were the dot is advanced*)
-  (ch:parseTreeDep N T G i bpos epos b)
+  (b1 e1: nat) (*The input, covered by the new part*)
+  (n1:N)           (*Nonterminal symbol, were the dot is advanced*)
+  (ch:parseTreeDep N T G i b1 e1 n1)
                   (*The parsetree that parses the input*)
   (it:earlyItemD) (*Earley item subject to dot advacement*)
-  (nip : getNextSymbolFromEarleyItem it = inleft (inl b))
+  (nip : getNextSymbolFromEarleyItem it = inleft (inl n1))
              (*Proof that really there is a b after the dot in it*)
-  (iinp : (eitGetEndPos it) = bpos)
+  (iinp : (eitGetEndPos it) = b1)
              (*Proof, thet input really is part of the whole
                  imput at the apropriate position*)
     : earlyItemD. (*Return it modified with the dot advanced
@@ -306,26 +309,27 @@ Definition dotAdvancerN
 refine ( 
   match it as k
   return it = k ->
-         getNextSymbolFromEarleyItem k = inleft (inl b)->
+         getNextSymbolFromEarleyItem k = inleft (inl n1)->
          earlyItemD
-  with eiC n start rns rnp pf pnd pM => fun ieq neq => 
-    match pnd as remsymb
-    return pnd = remsymb ->
+  with n → rns • pnd ⟨ poss , epos ⟩ pf, pM => fun ieq neq => 
+    match pnd as pnd0
+    return pnd = pnd0 ->
            forall pM2,
-           getNextSymbolFromEarleyItem (eiC n start rns rnp pf remsymb pM2 ) =
-           inleft (inl b) ->
+           getNextSymbolFromEarleyItem 
+             (n → rns • pnd0 ⟨ poss , epos ⟩ pf, pM2) =
+           inleft (inl n1) ->
            earlyItemD
     with 
       | nil => fun heq hpm neq2 => it
       | cons hd tl => fun heq hpm neq2 =>
-        eiC n start (rns ++ [hd]) (rnp ++ [epos]) _ tl _
+        n → rns++[hd] • tl ⟨ poss++[epos] , e1 ⟩ _ , _
     end eq_refl pM neq
   end eq_refl nip
 
 
 ).
 simpl in neq2.
-assert (be : hd = inl b).
+assert (be : hd = inl n1).
 injection neq2.
 auto.
 rewrite be.
@@ -339,6 +343,33 @@ rewrite <- app_assoc.
 apply hpm.
 Defined.
 
+
+Definition parseTreeFromCompletedEarlyItem bpos epos root
+    (it:earlyItemD)
+    (pendIsNull: eitGetPending it = nil)
+    (bEq: bpos = eitGetStartposition it)
+    (eEq: epos = eitGetEndPos it)
+    (rootEq: root = eitGetRuleLhs it):
+    parseTreeDep N T G i bpos epos root.
+refine(
+  match it as it0
+  return it = it0 -> _
+  with n → rns • pnd ⟨ poss , epos ⟩ pf, pM => fun Heq =>
+     _
+  end eq_refl
+).
+rewrite Heq in *.
+cbn in eEq, bEq, rootEq, pendIsNull.
+clear Heq.
+rewrite pendIsNull in pM.
+rewrite eEq,  rootEq.
+rewrite app_nil_r in pM.
+
+eapply (ptNode G i n rns bpos poss epos pf pM ?[pEqb]).
+[pEqb]:{
+  destruct poss; cbn in *; congruence.
+}
+Defined.
 
 
 (** Egy bizonyatott tétel arra, hogy ha a a dotadvancert nullázható nemterminálisra használjuk, ahol a lefedett terminálisok listája az üres lista, akkor az eddig lefedett terminálisok listájának a vége nem változik.
@@ -356,7 +387,6 @@ Proof.
   reflexivity.
   simpl.
   simpl in prf.
-  rewrite last_last.
   auto.
 Qed.
 
@@ -381,7 +411,6 @@ Proof.
   discriminate.
   simpl.
   simpl in prx.
-  rewrite last_last.
   auto.
 Qed.
 
@@ -397,7 +426,8 @@ refine (
     match (lhs head) =?= n with
       | left prf => predictorAux k n tail
             (insertIntoESC k s_curr
-              (eiC n k nil nil (pfNil N T G i k) (rhs head) _ )
+              (*eiC n k nil nil (pfNil N T G i k) (rhs head) _ *)
+              (n → nil • (rhs head) ⟨nil, k⟩ (pfNil N T G i k), _)
               eq_refl)
       | right prf => predictorAux k n tail s_curr
     end
@@ -444,14 +474,15 @@ Definition scanner (k:nat) (it:earlyItemD)
   : earleySetUnderConstruction (S k).
 refine (
     match it as iit return it = iit -> _ 
-    with eiC n start rns rnp pf pnd pM => fun ieq => 
-      match pnd as remsymb return pnd = remsymb -> _ with 
-      
-      | cons (inr t) tl => fun heq =>
-     match (AtPosDec t i k) with 
-       | left p => 
-         (insertIntoESC (S k) s_next (eiC n start (rns ++ [inr t])
-         _ (ptSnocT _ _ _ i _  _  (S k) _ pf t _ _) tl _) _)
+    with n → rns • pnd ⟨poss, epos⟩ pf , pM => fun ieq => 
+      match pnd as pnd0 return pnd = pnd0 -> _ with
+        | cons (inr t) tl => fun heq =>
+        match (AtPosDec t i k) with 
+          | left p => 
+            (insertIntoESC (S k) s_next
+              (n → (rns ++ [inr t]) • tl ⟨poss++[epos], epos+1⟩
+                (ptSnocT _ _ _ i _  epos _ pf t _) , _)
+            _)
        | _ => s_next
      end
     | _ => fun heq => s_next
@@ -460,7 +491,6 @@ refine (
 ).
 Unshelve.
 simpl.
-apply last_last.
 rewrite ieq in kOneAhead.
 simpl in kOneAhead.
 lia.
@@ -475,15 +505,17 @@ exact pM.
 Defined.
 
 
+
 (** A transferItems a lookup által visszaadott listának az elemeire meghívja a dotadvancert, és beírja őket a jelenlegi setbe. Ehez előállítjuk a bizonyítékot az insert függvény számára, hogy megfelelő helyen ér véget a lefedett terminálisok listája, ehez felhasználjuk a bemenetként megadott bizonyítékokat a befejezett szabály által lefedett szimbólumok kezdő és vég pontjára, illetve a dotadvancerXk tételt. A dotadvancernek szükséges bizonítékokat előállítjuk az itemben tárolt bizonyatékokból, és parsetreeeben térolt bizonyítékokat is, a befejezett earley itemben levő bizonyítékokkal, valamint inputként megkapjuk hogy a beffejezett szabály bal oldala megegyezik a B paraméterrel, és nincs több vizsgálatlan elem a szabályban.
 
 *)
+
 
 Fixpoint transferItems (x:nat) (k:nat) (B:N) (it:earlyItemD)
            (pendIsNull: eitGetPending it = nil)
            (beginIsX: eitGetStartposition it = x)
            (endIsK : eitGetEndPos it = k)
-           (lhsIsB : lhs (eitGetRule it) = B)
+           (lhsIsB : (eitGetRuleLhs it) = B)
            (source: list {it : earlyItemD |
                getNextSymbolFromEarleyItem it = inleft (inl B)
                /\  eitGetEndPos it = x} ) 
@@ -497,42 +529,28 @@ with
    fun ieq =>
   match source as ssource return source = ssource -> _ with
     | nil => fun _ =>target
-    | cons (exist _ hd prf) tl => fun seq =>
+    | cons (exist _ hd (conj prf1 prf2)) tl => fun seq =>
         transferItems  x k B it pendIsNull beginIsX endIsK lhsIsB tl
         (insertIntoESC k target 
           (
-             dotAdvancerN x k inn
-                (ptNode G i x k inn irns _ _ ipf _) hd _ _
+             dotAdvancerN x k B 
+                (parseTreeFromCompletedEarlyItem _ _ _ it _ _ _ _)
+                 hd _ _
           )
         _)
   end eq_refl
 end eq_refl
 ).
-apply (dotadvancerXk _ x k).
-destruct prf as [prf1 prf2].
-firstorder.
+
+eapply (dotadvancerXk _ x k).
+exact prf2.
 destruct hd.
 destruct pnd;
-cbn in prf |- *;
-destruct prf;
+cbn in prf1 |- *;
 congruence.
 Unshelve.
-rewrite ieq in pendIsNull.
-cbn in pendIsNull.
-rewrite  (app_nil_end irns).
-rewrite <- pendIsNull.
-exact ipM.
-
-rewrite ieq in lhsIsB.
-simpl in lhsIsB.
-rewrite lhsIsB.
-destruct prf as [prf1 prf2].
-exact prf1.
-
-destruct prf as [prf1 prf2].
-exact prf2.
+all:firstorder.
 Defined.
-
 
 
 (** A completernek nem sok feladata maradt, meghívja a lookup függvényt, majd az általa visszaadott értékkel, és további megfleleő paraméterekkel a transferItems függvényt. Ehhez a bizonyítékokat a kezdő pozícióra és a B paraméterre vonatkozókhoz elég egy egyszerű reflexivitási tétel, hiszen pont onnan olvastuk ki őket amivel meg kell egyeznie, a másik kettőt pedig beneő paraméterként fogja megkapni.
@@ -546,9 +564,9 @@ Definition completer (k:nat) (it:earlyItemD)
    (endPosIsK: eitGetEndPos it = k):
       earleySetUnderConstruction k.
 refine(
-  let source := lookup s_completed (lhs (eitGetRule it))
+  let source := lookup s_completed ((eitGetRuleLhs it))
                        (eitGetStartposition it) in 
-  transferItems (eitGetStartposition it) k (lhs (eitGetRule it)) 
+  transferItems (eitGetStartposition it) k ((eitGetRuleLhs it)) 
   it pendIsNull eq_refl endPosIsK eq_refl source s_curr
 
 ).
@@ -655,7 +673,8 @@ refine (
   ParserAux 0 nil 
     (sucC O nil 
         (map (fun '(exist _ r p) => exist _ 
-    (eiC (lhs r) 0 nil nil (pfNil N T G i 0) (rhs r) _) _)
+    ((lhs r) → nil • (rhs r) ⟨nil, 0⟩ (pfNil N T G i 0) , _)
+            _)
         (findRules (grammarGetStart G)))
     )
     (sucC 1 nil nil) (length i+1) fuel
@@ -691,7 +710,11 @@ refine(
          match hd as hhd return hd = hhd -> _ with
            | exist _ e prf => fun hdeq =>
            match e as ee return e = ee -> _ with
-             |eiC n bpos rns rnp pf pnd pM => fun heq => Just _ 
+             | (*eiC n bpos rns rnp pf pnd pM =>*)
+               n → rns • pnd ⟨poss, epos⟩ pf , pM =>
+
+
+ fun heq => Just _ 
            end eq_refl
          end eq_refl
        end
@@ -709,12 +732,15 @@ rewrite heq in hdprf.
 simpl in hdprf.
 destruct hdprf as [[hdprf1 hdprf2] hdprf3].
 clear heq.
+rewrite <- prf.
+(*rewrite hdprf3 in pf |- *.*)
 eapply ptNode.
 apply pf.
 rewrite hdprf2 in pM.
 rewrite <- app_nil_end in pM.
 rewrite <- hdprf1.
 apply pM.
+destruct poss; cbn in *; congruence.
 Defined.
 
 

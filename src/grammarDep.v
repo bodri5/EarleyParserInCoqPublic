@@ -115,157 +115,161 @@ Instance grammarruleInOpClass: InOpClass rule grammar:=
 Variable grammarruleInOpDecClass: InOpDecClass rule grammar grammarruleInOpClass.
 
 Existing Instance grammarruleInOpDecClass.
-
 Inductive parseTreeDep (i: list T):
     forall (bgnpos endpos: nat) (rootn:N),Type:=
   | ptNode
- (bgnpos endpos: nat)
- (rootn:N) (** This is the root non terminal symbol of the parsetree, and it is left hand side of the top grammar rule of this parsetree *)
-      (rl: list (N+T)) (** This is the right hand side of the same grammar rule, and the list contains both non-terminal and terminal symbols. *)
-      (t1: nat)
-      (ts: list nat) (** This is the list of lists of terminal symbols which are covered by the children *)
-      (ch: parseForestDep i t1 ts rl) (** This is the list of children *)
-      (pM: (ruleConstr rootn rl) ∊ G) (** The pM gives a proof that the top rule is in the grammar *)
-  :parseTreeDep i bgnpos endpos rootn
+  (rootn:N) (** This is the root non terminal symbol of the
+     parsetree, and it is theleft hand side of the top grammar
+     rule of this parsetree. *)
+  (rl: list (N+T)) (** This is the right hand side of the same
+     grammar rule, and the list contains both non-terminal and
+     terminal symbols. *)
+  (bpos:nat) (*Start position*)
+  (poss: list nat) (**Start positions between the rhs symbols
+     in the input. *)
+  (epos: nat) (** Last position covered in the input by
+     this parsetree. *)
+  (ch: parseForestDep i poss epos rl) (** This is the list of
+     children *)
+  (pM: (ruleConstr rootn rl) ∊ G) (** The pM gives a proof that
+     the rule is in the grammar *)
+  (pEqb:bpos = hd epos poss)
+     (*the two start  positions must match*)
+  :parseTreeDep i bpos epos rootn
 (** parseForestDep is essentially a list with additional information of the parse, pfNilWI is the nil constructor, pfSubTWI corresponds to cons with a non-terminal as head and pfTermWI corresponds to cons with a terminal as head *)
-with parseForestDep (i: list T): nat->list nat->list (N+T)->Type:=
-  | pfNil pos: parseForestDep i pos nil nil (** pfNilWI has no additional parameters *)
-  | pfSub (** The first three inputs, tl,n and pt correspond to the head and the remaining ts,ns and pf correspond to the tail *)
-       (b1 e1: nat) (** These are the start and end positions in the input covered by the first subtree *)
-       (n1:N) (** This is the root symbol for the first subtree *)
-       (pt:parseTreeDep i b1 e1 n1) (** This is the actual subtree *)
-       (t1: nat)
-       (ts: list nat) (** The list of inputs that are covered by the rest of the node *)
-       (ns: list (N+T)) (** This is the list of root symbols that are covered by the rest of the node*)
-       (pf:parseForestDep i t1 ts ns) (** These are the additional parsetrees of the tail *)
-       (peq:e1=t1):
-      parseForestDep i b1 (t1::ts) (inl n1::ns)
-  | pfTrm
+with parseForestDep (i: list T): list nat->nat->
+  list (N+T)->Type:=
+  | pfNil pos: parseForestDep i nil pos nil (** Empty forest at
+       position pos *)
+  | pfSub (** Cons operation with a nonterminal at the head. *)
+  (b1 e1: nat) (** These are the start and end positions
+     in the input covered by the first subtree. e1 is also the
+     first position of the tail. *)
+  (n1:N) (** This is the root symbol for the first subtree *)
+  (pt:parseTreeDep i b1 e1 n1) (** This is the actual subtree. *)
+  (poss: list nat) (**Start positions between the rhs symbols
+     in the input. *)
+  (epos: nat) (** Last position covered in the input by
+     this parsetree. *)
+  (ns: list (N+T)) (** This is the list of root symbols that are
+    covered by the rest of the node. *)
+  (pf:parseForestDep i poss epos ns) (** These are the additional
+    parsetrees of the tail *)
+  (pEqb:e1 = hd epos poss):
+      parseForestDep i (b1::poss) epos (inl n1::ns)
+  | pfTrm (** Cons operation with a terminal at the head. *)
        (b1:nat)
        (c:T) (** The first symbol is the head which is a terminal symbol itself *)
-       (t1: nat)
-       (ts: list nat) (** The list of inputs that are covered by the rest of the node *)
+       (poss: list nat) (** The list of inputs that are covered by the rest of the node *)
+       (epos: nat)
        (ns: list (N+T)) (** This is the list of root symbols that are covered by the rest of the node*)
-       (pf:parseForestDep i t1 ts ns) (** These are the additional parsetrees of the tail*)
-       (p1:b1+1=t1)
+       (pf:parseForestDep i poss epos ns) (** These are the additional parsetrees of the tail*)
+       (p1:b1+1 = hd epos poss)
        (pat:AtPos c i b1):
-      parseForestDep i b1 (t1::ts) (inr c::ns).
+      parseForestDep i (b1::poss) epos (inr c::ns).
 
 
-(** Egy új node-t akarunk hozzátenni egy parseforesthez,
- vagyis egy szintaxisfát a parseforest végére. A függvény
- hozzáteszi a szabályhoz az új
- nemterminálist és a lefedett terminálisokhoz a hozzáadott
- fa által lefedetteket.
-
+(** 
+Appends a new nonterminal and the corresponding parstee
+to the end of the parseforest.
 *)
-
-Fixpoint ptSnocN (i: list T) bpos poss epos
+Fixpoint ptSnocN (i: list T) poss epos eepos
     (ns : list (N+T)) (n : N)
-    (pF:parseForestDep i bpos poss ns)
-    (pT: parseTreeDep i (last poss bpos) epos n)  {struct pF}:
-    parseForestDep i bpos (poss++[epos]) (ns++[inl n]).
+    (pF:parseForestDep i poss epos ns)
+    (pT: parseTreeDep i epos eepos n)  {struct pF}:
+    parseForestDep i (poss++[epos]) eepos (ns++[inl n]).
 refine(
-  match pF as p in parseForestDep _ b q nl
-  return bpos=b -> poss=q -> ns=nl -> parseForestDep i bpos (q++[epos]) (nl++[inl n])
+  match pF as p in parseForestDep _ poss0 epos0 ns0
+  return poss=poss0 -> epos=epos0 -> ns=ns0 -> parseForestDep i
+    (poss0++[epos]) eepos (ns0++[inl n])
   with
-    | pfNil _ _ => fun Hbeq Hqeq Hneq => ?[pfnil]
-    | pfSub _ b1 e1 n1 pt t1 ts1 ns1 pf pEq =>
+    | pfNil _ _ => fun Hbeq Hqeq Hneq =>
+       pfSub i epos eepos n pT nil eepos nil (pfNil _ eepos) eq_refl
+    | pfSub _ b1 e1 n1 pt poss1 epos1 ns1 pf pEqb =>
         fun Hbeq Hqeq Hneq => ?[pfsub]
-    | pfTrm _ b1 c t1 ts1 ns1 pf pEq pAt =>
+    | pfTrm _ b1 c poss1 epos1 ns1 pf pEqb pAt =>
         fun Hbeq Hqeq Hneq => ?[pftrm]
   end eq_refl eq_refl eq_refl
 ).
-[pfnil]:{
+(*[pfnil]:{
+eapply (pfSub i epos eepos n pT nil eepos nil (pfNil _ eepos) eq_refl).
 rewrite Hqeq in pT.
 cbn in pT |- *.
-apply (pfSub i bpos epos n pT epos nil nil (pfNil _ _) eq_refl).
-}
+apply (pfSub i epos eepos n pT nil eepos (pfNil _ eepos) _).
+}*)
 [pfsub]:{
   simpl.
-  rewrite Hbeq.
-  eapply(pfSub i _ _ _ pt _ _ _ (ptSnocN _ _ _ _ _ _ pf ?[pT]) pEq).
-  [pT]:{
-    erewrite <- lastCons.
-    rewrite <- Hqeq.
-    exact pT.
+  rewrite <- Hqeq in pf.
+  eapply
+    (pfSub i _ _ _ pt _ eepos _ (ptSnocN _ _ _ _ _ n pf pT) ?[pEqb]).
+  [pEqb]:{
+    destruct poss1;
+    cbn in *;
+    congruence.
   }
 }
-[pftrm]:{ rewrite <- Hbeq in pEq, pAt.
-eapply (pfTrm i bpos c t1 _ _ (ptSnocN _ _ _ _ _ _ pf ?[pT]) pEq pAt).
-  [pT]:{
-    erewrite <- lastCons.
-    rewrite <- Hqeq.
-    exact pT.
+[pftrm]:{
+  simpl.
+  rewrite <- Hqeq in pf.
+  eapply
+    (pfTrm i b1 c _ _ _ (ptSnocN _ _ _ _ _ n pf pT) ?[pEqb] pAt).
+  [pEqb]:{
+    destruct poss1;
+    cbn in *;
+    congruence.
   }
 }
 Defined.
 
 
-(** A ptSnocT függvény egy terminális szimbólumból álló
- parseForestet tesz hozzá a parseForest végéhez,
- hozzátéve a terminális szimbólumot mind
-két listához.
-
+(** 
+Appends a new terminal to the end of the parseforest.
+A proof that there is really the given character at
+the given position in the input must be given.
 *)
-
-Fixpoint ptSnocT (*(ts : list (list T)) (ns : list (N+T))
-   (pF:parseForestDep ts ns) (t:T):
-    parseForestWithInput(ts++[[t]])(ns ++ [inr t]):=*)
-
- (i: list T) bpos poss epos
+Fixpoint ptSnocT
+    (i: list T) poss epos
     (ns : list (N+T))
-    (pF:parseForestDep i bpos poss ns) (t:T)
-    (pEq:(last poss bpos)+1=epos) (pAt:AtPos t i (last poss bpos)) {struct pF}:
-    parseForestDep i bpos (poss++[epos]) (ns++[inr t]).
-
+    (pF:parseForestDep i poss epos ns) (t:T)
+    (pAt:AtPos t i epos) {struct pF}:
+    parseForestDep i (poss++[epos]) (epos+1) (ns++[inr t]).
 refine(
-  match pF as p in parseForestDep _ b q nl
-  return bpos=b -> poss=q -> ns=nl -> parseForestDep i bpos (q++[epos]) (nl++[inr t])
+  match pF as p in parseForestDep _ poss0 epos0 ns0
+  return poss=poss0 -> epos=epos0 -> ns=ns0 -> parseForestDep i
+    (poss0++[epos]) (epos0+1) (ns0++[inr t])
   with
-    | pfNil _ _ => fun Hbeq Hqeq Hneq => ?[pfnil]
-    | pfSub _ b1 e1 n1 pt t1 ts1 ns1 pf pEq =>
+    | pfNil _ epos1 => fun Hbeq Hqeq Hneq => (*?[pfnil]*)
+       pfTrm i epos t [] (epos1+1)  nil (pfNil _ _) (ltac:(cbn in *;congruence)) pAt
+    | pfSub _ b1 e1 n1 pt poss1 epos1 ns1 pf pEqb =>
         fun Hbeq Hqeq Hneq => ?[pfsub]
-    | pfTrm _ b1 c t1 ts1 ns1 pf pEq pAt =>
+    | pfTrm _ b1 c poss1 epos1 ns1 pf pEqb pAt1 =>
         fun Hbeq Hqeq Hneq => ?[pftrm]
   end eq_refl eq_refl eq_refl
 ).
-
-[pfnil]:{
-subst.
-cbn in *.
-refine ((pfTrm i _ t _ _ _ (pfNil _ _) eq_refl pAt)).
-}
 [pfsub]:{
   simpl.
-  rewrite Hbeq.
-  refine (pfSub i _ _ _ pt _ _ _ (ptSnocT _ _ _ _ _ pf t ?[pEq1] ?[pAt1]) pEq).
-  [pEq1]:{
-    erewrite <- lastCons.
-    rewrite <- Hqeq.
-    exact pEq0.
-  }
-  [pAt1]:{
-  erewrite <- lastCons.
-  rewrite <- Hqeq.
-  exact pAt.
+  rewrite <- Hqeq in *.
+  eapply
+    (pfSub i _ _ _ pt _ (epos+1) _ (ptSnocT _ _ _ _ pf t pAt)
+       ?[pEqb]).
+  [pEqb]:{
+    destruct poss1;
+    cbn in *;
+    congruence.
   }
 }
-[pftrm]:{ rewrite <- Hbeq in pEq, pAt.
-eapply (pfTrm i bpos c t1 _ _ (ptSnocT _ _ _ _ _ pf t ?[pEq1] ?[pAt1]) pEq pAt).
-  [pEq1]:{
-    erewrite <- lastCons.
-    rewrite <- Hqeq.
-    exact pEq0.
-  }
-  [pAt1]:{
-  erewrite <- lastCons.
-  rewrite <- Hqeq.
-  exact pAt0.
+[pftrm]:{
+  simpl.
+  rewrite <- Hqeq in *.
+  eapply
+    (pfTrm i b1 c _ _ _ (ptSnocT _ _ _ _ pf t pAt) ?[pEqb] pAt1).
+  [pEqb]:{
+    destruct poss1;
+    cbn in *;
+    congruence.
   }
 }
 Defined.
-
 
 
 End grammarcontext.
